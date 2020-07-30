@@ -14,7 +14,7 @@ class ParseExcel(object):
 
     def load_workbook(self, excel_path):
         try:
-            self.workbook = openpyxl.load_workbook(excel_path)
+            self.workbook = openpyxl.load_workbook(excel_path, data_only=True)
         except Exception as e:
             raise e
         self.excel_file = excel_path
@@ -123,5 +123,3 @@ if __name__ == '__main__':
     pe.write_cell(sheet_obj, 'test2', row_no=3, col_no=4)
     pe.write_current_time_in_cell(sheet_obj, 'C2')
     pe.write_current_time_in_cell(sheet_obj, row_no=2, col_no=6)
-
-
