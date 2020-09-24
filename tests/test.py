@@ -2,87 +2,60 @@
 # author = 'jessica'
 import requests
 import json
+from util.parse_excel import *
+from util.http_client import *
+from config.config import *
+from action.write_test_result import *
 
-# login Salesforce
-username = 'jessica.test@dev.com'
-password = 'passwordtest'
-host = 'https://ap8.salesforce.com'  # 访问REST接口域名不要设置成lightning的，切换成classic才能访问，否则会报找不到接口。
-grant_service = '/services/oauth2/token?'
-client_id = '3MVG9pe2TCoA1Pf5rH8DfBl9d2fFp8HjLb_qT2kinLYayyZW0ROHTrQH44dsrveZRkrVGOC9tST2MfmcGPY6s'
-client_secret = 'FC5F7F6836001F41055D7A83AF3B282A3C2C1A8C3E1B1EBDA3BD17CABEFE4C53'
 
-data = {
-    "grant_type": "password",
-    "client_id": client_id,
-    "client_secret": client_secret,
-    "username": username,
-    "password": password
-}
-response = requests.request(method='post', url=host+grant_service, data=data)  # data为dict时，如果不指定content-type，默认为application/x-www-form-urlencoded，相当于普通form表单提交的形式
-print('response status code: ', response.status_code)
-if response.status_code == 200:  # 200 "OK" success code, for GET or HEAD request.
-    json_str = response.json()
-    access_token = json_str.get('access_token')
-    token_type = json_str.get('token_type')
+def test_api():
+    pe = ParseExcel()
+    pe.load_workbook(test_data_path)
 
-# New an Account record
-uri = '/services/data/v48.0/sobjects/Account'
-headers = {
-    "Authorization": token_type + ' ' + access_token,
-    "Content-Type": 'application/json'
-}
-data = json.dumps({"Name": "jessicatest20200728"})
-response = requests.request(method='post', url=host + uri, headers=headers, data=data)
-print(response.status_code)
-if response.status_code == 201:  # 201 "Created" success code, for POST request.
-    print(response.json())
-    account_id = response.json().get('id')
+    # 先读API sheet
+    api_sheet_obj = pe.get_sheet_by_name('API')
+    if_execute_list = pe.get_single_column(sheet=api_sheet_obj, col_no=idx_api_if_execute+1)  # 找到IfExecute列判断是否执行
+    for idx, cell in enumerate(if_execute_list[1:], 2):  # 第一行标题去掉，idx从2开始，即第2行开始
+        if cell.value.upper() == 'Y':
+            row_obj = pe.get_single_row(sheet=api_sheet_obj, row_no=idx)
+            api_name = row_obj[idx_api_name].value
+            request_url = row_obj[idx_request_url].value
+            request_method = row_obj[idx_request_method].value
+            params_type = row_obj[idx_params_type].value
+            api_case_sheet_name = row_obj[idx_api_case_sheet_name].value
+            # print(api_name, request_url, request_method, params_type, api_case_sheet_name)
+            print('api_case_sheet_name: ', api_case_sheet_name)
 
-# Get the Account record
-uri = '/services/data/v48.0/sobjects/Account/id/' + account_id
-headers = {
-    "Authorization": token_type + ' ' + access_token,
-    "Content-Type": 'application/json'
-}
-response = requests.request(method='get', url=host + uri, headers=headers)
-print(response.status_code)
-if response.status_code == 200:
-    print(response.json())
+            # 下一步读具体的接口用例sheet
+            case_sheet_obj = pe.get_sheet_by_name(api_case_sheet_name)
+            case_if_execute_list = pe.get_single_column(case_sheet_obj, idx_case_if_execute+1)
+            # print(case_if_execute_list)
+            for case_idx, case_cell in enumerate(case_if_execute_list[1:], 2):
+                if case_cell.value.upper() == 'Y':
+                    case_row_obj = pe.get_single_row(case_sheet_obj, case_idx)
+                    rely_rule = case_row_obj[idx_rely_rule].value
+                    print('rely_rule: ', rely_rule)
+                    # response_code = case_row_obj[idx_response_code].value
+                    # data_store = case_row_obj[idx_data_store].value
+                    check_point = case_row_obj[idx_check_point].value
+                    # result = case_row_obj[idx_result].value
+                    # error_info = case_row_obj[idx_error_info].value
+                    if rely_rule:
+                        request_data = json.dumps(GetRequestData.get_request_data(eval(rely_rule)))
+                    else:
+                        request_data = case_row_obj[idx_request_data].value
+                    hc = HttpClient()
+                    response = hc.request(method=request_method,
+                                          url=request_url,
+                                          params_type=params_type,
+                                          request_data=request_data)
+                    print('response.status_code: ', response.status_code)
+                    if response.status_code == check_point:
+                        response_data = response.text
+                        print('response_data: ', response_data)
+                        write_result(pe, case_sheet_obj, case_idx, request_data=request_data, response_data=response_data)
 
-# Edit the Account record
-uri = '/services/data/v48.0/sobjects/Account/' + account_id
-headers = {
-    "Authorization": token_type + ' ' + access_token,
-    "Content-Type": 'application/json'
-}
-data = json.dumps({"Name": "jessicatest20200728update"})
-response = requests.request(method='patch', url=host + uri, headers=headers, data=data)
-print(response.status_code)
-if response.status_code == 204:  # 204 "No Content" success code, for DELETE request.
-    print('Account is updated successfully.')
 
-# Query updated account record
-soql_query = f"SELECT Id, Name FROM Account WHERE Id = '{account_id}'"
-uri = '/services/data/v48.0/query/?q=' + soql_query
-print('uri: ', uri)
-headers = {
-    "Authorization": token_type + ' ' + access_token,
-    "Content-Type": 'application/json'
-}
-response = requests.request(method='get', url=host + uri, headers=headers)
-print(response.status_code)
-if response.status_code == 200:
-    print(response.json())
-    if response.json().get('records')[0].get('Name') == 'jessicatest20200728update':
-        print('Account is really updated.')
+if __name__ == '__main__':
+    test_api()
 
-# Delete the Account record
-uri = '/services/data/v48.0/sobjects/Account/' + account_id
-headers = {
-    "Authorization": token_type + ' ' + access_token,
-    "Content-Type": 'application/json'
-}
-response = requests.request(method='delete', url=host + uri, headers=headers)
-print(response.status_code)
-if response.status_code == 204:  # 204 "No Content" success code, for DELETE request.
-    print('Account is deleted successfully.')

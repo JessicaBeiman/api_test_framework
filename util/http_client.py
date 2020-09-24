@@ -19,10 +19,10 @@ class HttpClient(object):
     def request(self, method, url, params_type, request_data=None, headers=None):
         if method.lower() == 'post':
             if params_type == 'form':
-                response = self.__post(url=url, data=request_data, headers=headers)
+                response = self.__post(url=url, data=eval(request_data), headers=headers)  # 在excel里面存放的是dict，但是读出来的是str，要用eval()转换
                 return response
             elif params_type == 'json':
-                response = self.__post(url=url, json=request_data, headers=headers)
+                response = self.__post(url=url, json=eval(request_data), headers=headers)
                 return response
         elif method.lower() == 'get':
             if params_type == 'url':
